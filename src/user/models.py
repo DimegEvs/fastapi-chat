@@ -1,9 +1,9 @@
 
 from datetime import datetime
 from fastapi_users_db_sqlalchemy import SQLAlchemyBaseUserTable
-from sqlalchemy import TIMESTAMP, Boolean, Column, Integer, String
+from sqlalchemy import TIMESTAMP, Boolean, Column, Integer, String, select
 
-from src.database import Base
+from src.database import Base, async_session_maker
 
 
 class User(SQLAlchemyBaseUserTable[int], Base):
@@ -19,4 +19,13 @@ class User(SQLAlchemyBaseUserTable[int], Base):
     
     class Config:
         from_attributes = True
-        
+    
+    
+class UserService:
+    
+    @classmethod
+    async def get_user(cls, user_id):
+        async with async_session_maker() as session:
+            query = select(User.name, User.surname).where(User.id == user_id)
+            result = await session.execute(query)
+            return result.mappings().all()
