@@ -5,7 +5,7 @@ from fastapi_users.db import BaseUserDatabase
 from fastapi import Depends, WebSocket
 from fastapi_users.db import SQLAlchemyBaseUserTable, SQLAlchemyUserDatabase
 from sqlalchemy import (JSON, TIMESTAMP, Boolean, Column, DateTime, ForeignKey, Integer,
-                        String, Table, and_, func, insert, join, or_, select)
+                        String, Table, and_, func, insert, join, or_, select, update)
 
 from src.database import Base, async_session_maker
 from src.user.models import User
@@ -36,40 +36,46 @@ class Message(Base):
 
 class ConnectionManager:
     def __init__(self):
-        self.active_connections: Dict[int, WebSocket] = {}
+        self.active_connections: Dict[int, Dict[int, WebSocket]] = {}
 
-    async def connect(self, sender_id: int, websocket: WebSocket):
+    async def connect(self, sender_id: int, recipient_id: int, websocket: WebSocket):
         await websocket.accept()
-        self.active_connections[sender_id] = websocket
+        self.active_connections[sender_id] = [recipient_id, websocket]
+        await self.update_messages_to_datebase(self=self, sender_id=recipient_id, recipient_id=sender_id)
+        
 
     def disconnect(self, sender_id: int, websocket: WebSocket):
         del self.active_connections[sender_id]
-
-    async def send_personal_message(self, websocket: WebSocket, data):
-        await websocket.send_json(data)
-
-    async def broadcast(self, message: str):
-        for connection in self.active_connections:
-            await connection.send_text(message)
-            
-    async def send_active_user_message(self, websocket: WebSocket, recipient_id: int, data):
-        if recipient_id in self.active_connections:
-            connection = self.active_connections[recipient_id]
-            await connection.send_json(data=data)
-            
-            await websocket.send_json(data=data)
-        else:
-            print(data)
-            await websocket.send_json(data=data)
+    
+    async def send_pesonal_message(self, websocket: WebSocket, recipient_id: int, sender_id : int, data):
+        await websocket.send_json(data=data)
+    async def send_active_user_message(self, websocket: WebSocket, recipient_id: int, sender_id : int, data):
+        try:
+            if (recipient_id in manager.active_connections and sender_id in manager.active_connections[recipient_id]):
+                connection = self.active_connections[recipient_id]
+                await connection[1].send_json(data=data)
+                await websocket.send_json(data=data)
+            else:
+                print(data)
+                await websocket.send_json(data=data)
+        except KeyError:
+            print("Пользователь не найден")
+    @staticmethod
+    async def update_messages_to_datebase(self, sender_id: int, recipient_id: int):
+        async with async_session_maker() as session:
+            stmt = update(Message).where(and_(Message.recipient_id == recipient_id, Message.sender_id == sender_id)).values(is_read=True)
+            await session.execute(stmt)
+            await session.commit()
     
     @staticmethod
-    async def insert_message_to_datebase(self, message: str, sender_id: int, recipient_id: int):
+    async def insert_message_to_datebase(self, message: str, sender_id: int, recipient_id: int, is_read: bool):
         async with async_session_maker() as session:
             stmt = insert(Message).values(
                 message=message,
                 sender_id=sender_id,
                 recipient_id=recipient_id,
-                timestamp=datetime.now()
+                timestamp=datetime.now(),
+                is_read=is_read
             )
             await session.execute(stmt)
             await session.commit()
