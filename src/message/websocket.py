@@ -26,7 +26,6 @@ async def websocket_endpoint(websocket: WebSocket, sender_id: int, recipient_id:
         while True:
             message = await websocket.receive_json()
             is_read = (recipient_id in manager.active_connections and (sender_id in manager.active_connections[recipient_id])) 
-            # or (sender_id in manager.active_connections and (recipient_id in manager.active_connections[sender_id]))
             await manager.insert_message_to_datebase(manager, message=message["message"], sender_id = sender_id, recipient_id=recipient_id, is_read=is_read)
             res = await manager.get_last_message(sender_id=sender_id, recipient_id=recipient_id)
             print(res)
