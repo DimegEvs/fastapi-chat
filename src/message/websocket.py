@@ -28,7 +28,6 @@ async def websocket_endpoint(websocket: WebSocket, sender_id: int, recipient_id:
             is_read = (recipient_id in manager.active_connections and (sender_id in manager.active_connections[recipient_id])) 
             await manager.insert_message_to_datebase(manager, message=message["message"], sender_id = sender_id, recipient_id=recipient_id, is_read=is_read)
             res = await manager.get_last_message(sender_id=sender_id, recipient_id=recipient_id)
-            print(res)
             await manager.send_active_user_message(websocket=websocket, recipient_id=recipient_id, sender_id=sender_id, data=res)
             if (recipient_id not in manager.active_connections) or (recipient_id in manager.active_connections and (sender_id not in manager.active_connections[recipient_id])):
                 await send_notifications(sender_id=sender_id, recipient_id=recipient_id)

@@ -1,12 +1,14 @@
 from ast import Dict
 from datetime import datetime
 
+import httpx
 from fastapi_users.db import BaseUserDatabase
 from fastapi import Depends, WebSocket
 from fastapi_users.db import SQLAlchemyBaseUserTable, SQLAlchemyUserDatabase
 from sqlalchemy import (JSON, TIMESTAMP, Boolean, Column, DateTime, ForeignKey, Integer,
                         String, Table, and_, func, insert, join, or_, select, update)
 
+from src.config import URL_LOGGER
 from src.database import Base, async_session_maker
 from src.user.models import User
 
@@ -42,22 +44,30 @@ class ConnectionManager:
         await websocket.accept()
         self.active_connections[sender_id] = [recipient_id, websocket]
         await self.update_messages_to_datebase(self=self, sender_id=recipient_id, recipient_id=sender_id)
-        
 
     def disconnect(self, sender_id: int, websocket: WebSocket):
+
         del self.active_connections[sender_id]
-    
+
     async def send_pesonal_message(self, websocket: WebSocket, recipient_id: int, sender_id : int, data):
         await websocket.send_json(data=data)
+
     async def send_active_user_message(self, websocket: WebSocket, recipient_id: int, sender_id : int, data):
         try:
-            if (recipient_id in manager.active_connections and sender_id in manager.active_connections[recipient_id]):
-                connection = self.active_connections[recipient_id]
-                await connection[1].send_json(data=data)
-                await websocket.send_json(data=data)
-            else:
-                print(data)
-                await websocket.send_json(data=data)
+            params = {
+                "type": "INFO",
+                "user_id": sender_id,
+                "message": f"User ID: {sender_id} send message TEXT: {data['message']['message']} to ID: {recipient_id}."
+            }
+            async with httpx.AsyncClient() as client:
+                if recipient_id in manager.active_connections and sender_id in manager.active_connections[recipient_id]:
+                    connection = self.active_connections[recipient_id]
+                    await connection[1].send_json(data=data)
+                    await websocket.send_json(data=data)
+                    await client.get(URL_LOGGER, params=params)
+                else:
+                    await websocket.send_json(data=data)
+                    await client.get(URL_LOGGER, params=params)
         except KeyError:
             print("Пользователь не найден")
     @staticmethod
